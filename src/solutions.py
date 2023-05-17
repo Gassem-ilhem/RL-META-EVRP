@@ -1,11 +1,55 @@
-def decode_solution(solution, num_customers, num_vehicles):
+# def decode_solution(solution, num_customers, num_vehicles):
+#     routes = [[] for i in range(num_vehicles)]
+#     for i, bit in enumerate(solution):
+#         vehicle_index = i // num_customers
+#         customer_index = i % num_customers
+#         if bit == 1:
+#             routes[vehicle_index].append(customer_index)
+#     return routes
+import numpy as np
+
+def decode_solution(solution, num_customers, num_vehicles, vehicle_battery, vehicle_initialCharging, vehicle_avgTravelSpeed, customer_locations, customer_charging_rates, customer_discharging_rates):
     routes = [[] for i in range(num_vehicles)]
+    battery_levels = np.zeros(num_vehicles)
+    charging_levels = np.zeros(num_vehicles)
     for i, bit in enumerate(solution):
         vehicle_index = i // num_customers
         customer_index = i % num_customers
         if bit == 1:
+            # Calculate travel time and charging time for this customer
+            current_location = 0 if len(routes[vehicle_index]) == 0 else routes[vehicle_index][-1] + 1
+            next_location = customer_index + 1
+            distance = np.sqrt((customer_locations[next_location-1][0] - customer_locations[current_location-1][0])**2 + (customer_locations[next_location-1][1] - customer_locations[current_location-1][1])**2)
+            travel_time = distance / vehicle_avgTravelSpeed
+            charging_time = (vehicle_battery[vehicle_index] - battery_levels[vehicle_index]) / customer_charging_rates[current_location] if battery_levels[vehicle_index] < vehicle_initialCharging else 0
+
+            # Update battery levels at current node
+            if current_location > 0:
+                battery_levels[vehicle_index] -= travel_time * customer_discharging_rates[current_location]
+                battery_levels[vehicle_index] = max(battery_levels[vehicle_index], 0)
+                charging_levels[vehicle_index] = 0
+            else:
+                battery_levels[vehicle_index] = vehicle_initialCharging
+                charging_levels[vehicle_index] = battery_levels[vehicle_index]
+
+            # Check if we need to charge at the current node
+            if battery_levels[vehicle_index] < vehicle_battery[vehicle_index] * 0.1:
+                charging_time = (vehicle_battery[vehicle_index] - battery_levels[vehicle_index]) / customer_charging_rates[current_location]
+                battery_levels[vehicle_index] += charging_time * customer_charging_rates[current_location]
+                battery_levels[vehicle_index] = min(battery_levels[vehicle_index], vehicle_battery[vehicle_index])
+                charging_levels[vehicle_index] = battery_levels[vehicle_index]
+
+            # Update battery levels and charging levels at next node
+            if next_location <= num_customers:
+                battery_levels[vehicle_index] -= charging_time * customer_discharging_rates[next_location]
+                battery_levels[vehicle_index] = max(battery_levels[vehicle_index], 0)
+                charging_levels[vehicle_index] = 0
+
+            # Add customer to route
             routes[vehicle_index].append(customer_index)
+
     return routes
+
 
 def encode_solution(routes):
     solution = []
