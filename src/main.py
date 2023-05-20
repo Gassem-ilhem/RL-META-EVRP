@@ -3,19 +3,28 @@ from solutions import decode_solution, encode_solution, calculate_route_cost
 from genetic_algorithm import GeneticAlgorithm
 from dqn_agent import DQNAgent
 import numpy as np
+import os
+from init import BASE_DIR
+from itertools import chain
 
 # Load instance data
-instance_data = load_instance('../data/solomon_instances/C101.json')
+# instance_data = load_instance('../data/solomon_instances/C101.json')
+json_data_dir = os.path.join(BASE_DIR, 'data', 'json')
+json_file = os.path.join(json_data_dir, 'C101.json')
+instance_data = load_instance(json_file=json_file)
+
+
+
 
 # Define EVRP problem parameters
 num_customers = len(instance_data) - 1
 num_vehicles = instance_data["max_vehicle_number"]
 vehicle_capacity = instance_data["vehicle_capacity"]
-vehicle_chargingRate=instance_data["vehicle_chargingRate"]
-vehicle_dischargingRate=instance_data["vehicle_dischargingRate"]
-vehicle_initialCharging=instance_data["vehicle_initialCharging"]
-vehicle_avgTravelSpeed=instance_data["vehicle_avgTravelSpeed"]
-vehicle_battery = np.array([instance_data["vehicle_battery"]] * num_vehicles, dtype=int) 
+vehicle_chargingRate = instance_data["vehicle_chargingRate"]
+vehicle_dischargingRate = instance_data["vehicle_dischargingRate"]
+vehicle_initialCharging = instance_data["vehicle_initialCharging"]
+vehicle_avgTravelSpeed = instance_data["vehicle_avgTravelSpeed"]
+vehicle_battery = np.array([instance_data["vehicle_battery"]] * num_vehicles, dtype=int)
 
 customer_demands = []
 customer_locations = []
@@ -28,11 +37,13 @@ start_location = (instance_data["depart"]["coordinates"]["x"], instance_data["de
 
 # Define fitness function for genetic algorithm
 def genetic_algorithm_fitness_function(solution):
-    routes = decode_solution(solution, num_customers, num_vehicles, vehicle_battery, vehicle_initialCharging, vehicle_avgTravelSpeed,customer_locations, vehicle_chargingRate, vehicle_dischargingRate)
+    routes = decode_solution(solution, num_customers, num_vehicles, vehicle_battery, vehicle_initialCharging, vehicle_avgTravelSpeed, customer_locations, vehicle_chargingRate, vehicle_dischargingRate)
     total_cost = 0
     for vehicle_index, route in enumerate(routes):
-        total_cost += calculate_route_cost(route, start_location, customer_locations, customer_demands)
+        total_cost += calculate_route_cost(route, start_location, customer_locations, customer_demands, vehicle_initialCharging[vehicle_index], vehicle_avgTravelSpeed, vehicle_dischargingRate, vehicle_chargingRate, vehicle_battery[vehicle_index])
     return -total_cost
+
+
 
 # Initialize genetic algorithm
 pop_size = 50
@@ -46,7 +57,7 @@ solution_length = num_customers * num_vehicles
 
 # Run genetic algorithm to obtain initial solution
 initial_solution = genetic_algorithm.evolve(genetic_algorithm_fitness_function, solution_length)
-initial_routes = decode_solution(solution, num_customers, num_vehicles, vehicle_battery, vehicle_initialCharging, vehicle_avgTravelSpeed, vehicle_chargingRate, vehicle_dischargingRate)
+initial_routes = decode_solution(initial_solution, num_customers, num_vehicles, vehicle_battery, vehicle_initialCharging, vehicle_avgTravelSpeed, vehicle_chargingRate, vehicle_dischargingRate)
 
 
 
@@ -62,7 +73,7 @@ def get_state(routes, capacities):
 def get_reward(routes, capacities, demands, locations):
     total_cost = 0
     for vehicle_index, route in enumerate(routes):
-        total_cost += calculate_route_cost(route, start_location, locations, demands)
+        total_cost += calculate_route_cost(route, start_location, locations, demands, vehicle_initialCharging[vehicle_index], vehicle_avgTravelSpeed, vehicle_dischargingRate, vehicle_chargingRate, vehicle_battery[vehicle_index])
     return -total_cost
 
 
@@ -137,7 +148,8 @@ for episode in range(num_episodes):
     current_routes = initial_routes[:]  # Create a copy of initial_routes
     while not done:
         action = dqn_agent.act(state)
-        next_routes, next_capacities = perform_action(action, current_routes, [vehicle_capacity] * num_vehicles, customer_demands, customer_locations)
+        next_routes, next_capacities = perform_action(action, current_routes, [vehicle_capacity] * num_vehicles,
+                                                      customer_demands, customer_locations)
         next_state = get_state(next_routes, next_capacities)
         reward = get_reward(next_routes, next_capacities, customer_demands, customer_locations)
         total_reward += reward
@@ -148,5 +160,9 @@ for episode in range(num_episodes):
             dqn_agent.replay()
         if reward == 0:
             done = True
-    print(f"Episode {episode+1} - Total reward: {total_reward}")
+    print(f"Episode {episode + 1} - Total reward: {total_reward}")
 
+# Calculate and print the final minimized cost
+final_routes, final_capacities = current_routes, [vehicle_capacity] * num_vehicles
+final_cost = get_reward(final_routes, final_capacities, customer_demands, customer_locations)
+print("Final Minimized Cost:", final_cost)

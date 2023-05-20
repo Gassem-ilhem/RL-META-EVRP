@@ -1,47 +1,47 @@
-# def decode_solution(solution, num_customers, num_vehicles):
-#     routes = [[] for i in range(num_vehicles)]
-#     for i, bit in enumerate(solution):
-#         vehicle_index = i // num_customers
-#         customer_index = i % num_customers
-#         if bit == 1:
-#             routes[vehicle_index].append(customer_index)
-#     return routes
+import numpy as np
+import math
+
 import numpy as np
 
-def decode_solution(solution, num_customers, num_vehicles, vehicle_battery, vehicle_initialCharging, vehicle_avgTravelSpeed, customer_locations, customer_charging_rates, customer_discharging_rates):
-    routes = [[] for i in range(num_vehicles)]
-    battery_levels = np.zeros(num_vehicles)
-    charging_levels = np.zeros(num_vehicles)
+def decode_solution(solution, num_customers, num_vehicles, vehicle_battery, vehicle_initialCharging, vehicle_avgTravelSpeed, customer_locations, vehicle_chargingRate, vehicle_dischargingRate):
+    routes = [[] for _ in range(num_vehicles)]
+    battery_levels = [0] * num_vehicles  # Initialize battery_levels as a list of zeros
+    charging_levels = [0] * num_customers  # Update charging_levels size to num_customers
+    vehicle_initialCharging = [100] * num_vehicles
+
     for i, bit in enumerate(solution):
         vehicle_index = i // num_customers
         customer_index = i % num_customers
+
         if bit == 1:
-            # Calculate travel time and charging time for this customer
             current_location = 0 if len(routes[vehicle_index]) == 0 else routes[vehicle_index][-1] + 1
             next_location = customer_index + 1
-            distance = np.sqrt((customer_locations[next_location-1][0] - customer_locations[current_location-1][0])**2 + (customer_locations[next_location-1][1] - customer_locations[current_location-1][1])**2)
+
+            # Calculate travel time and charging time for this customer
+            distance = calculate_distance(customer_locations[current_location - 1], customer_locations[next_location - 1])
             travel_time = distance / vehicle_avgTravelSpeed
-            charging_time = (vehicle_battery[vehicle_index] - battery_levels[vehicle_index]) / customer_charging_rates[current_location] if battery_levels[vehicle_index] < vehicle_initialCharging else 0
+            charging_time =(vehicle_battery[vehicle_index] - battery_levels[vehicle_index]) / charging_levels[next_location - 1] if battery_levels[vehicle_index] < vehicle_initialCharging[vehicle_index] else 0
+
 
             # Update battery levels at current node
             if current_location > 0:
-                battery_levels[vehicle_index] -= travel_time * customer_discharging_rates[current_location]
+                battery_levels[vehicle_index] -= travel_time * vehicle_dischargingRate[current_location - 1]
                 battery_levels[vehicle_index] = max(battery_levels[vehicle_index], 0)
                 charging_levels[vehicle_index] = 0
             else:
-                battery_levels[vehicle_index] = vehicle_initialCharging
+                battery_levels[vehicle_index] = vehicle_initialCharging[vehicle_index]
                 charging_levels[vehicle_index] = battery_levels[vehicle_index]
 
             # Check if we need to charge at the current node
             if battery_levels[vehicle_index] < vehicle_battery[vehicle_index] * 0.1:
-                charging_time = (vehicle_battery[vehicle_index] - battery_levels[vehicle_index]) / customer_charging_rates[current_location]
-                battery_levels[vehicle_index] += charging_time * customer_charging_rates[current_location]
+                charging_time = (vehicle_battery[vehicle_index] - battery_levels[vehicle_index]) / charging_levels[current_location - 1]
+                battery_levels[vehicle_index] += charging_time * charging_levels[current_location - 1]
                 battery_levels[vehicle_index] = min(battery_levels[vehicle_index], vehicle_battery[vehicle_index])
                 charging_levels[vehicle_index] = battery_levels[vehicle_index]
 
             # Update battery levels and charging levels at next node
             if next_location <= num_customers:
-                battery_levels[vehicle_index] -= charging_time * customer_discharging_rates[next_location]
+                battery_levels[vehicle_index] -= charging_time * vehicle_dischargingRate[next_location - 1]
                 battery_levels[vehicle_index] = max(battery_levels[vehicle_index], 0)
                 charging_levels[vehicle_index] = 0
 
@@ -49,6 +49,7 @@ def decode_solution(solution, num_customers, num_vehicles, vehicle_battery, vehi
             routes[vehicle_index].append(customer_index)
 
     return routes
+
 
 
 def encode_solution(routes):
@@ -59,20 +60,41 @@ def encode_solution(routes):
             solution.append(index)
     return solution
 
+  
+    
+    
+def calculate_route_cost(route, customer_demands, customer_locations, vehicle_initialCharging, vehicle_avgTravelSpeed, vehicle_dischargingRate,vehicle_chargingRate,vehicle_battery):
+    total_cost = 0
+    current_load = 0
+    current_battery = vehicle_initialCharging
+    current_location = (0, 0)  # Assuming start location is (0, 0)
 
-def calculate_route_cost(route, start_location, customer_locations, customer_demands):
-    if not route:
-        return 0
-    distances = []
-    current_location = start_location
     for customer_index in route:
-        if customer_index < len(customer_locations):
-            distances.append(calculate_distance(current_location, customer_locations[customer_index]))
-            current_location = customer_locations[customer_index]
-        else:
-            return float("inf")
-    distances.append(calculate_distance(current_location, start_location))
-    return sum(distances)
+        demand = customer_demands[customer_index]
+        distance = calculate_distance(current_location, customer_locations[customer_index])
+        travel_time = distance / vehicle_avgTravelSpeed
+        current_load += demand
+        current_battery -= travel_time * vehicle_dischargingRate
+        current_battery = min(current_battery + travel_time * vehicle_chargingRate, vehicle_battery)
+        current_location = customer_locations[customer_index]
+        total_cost += distance
+
+    distance = calculate_distance(current_location, (0, 0))  # Assuming start location is (0, 0)
+    total_cost += distance
+
+    return total_cost
+
+def calculate_travel_time(location1, location2, avg_travel_speed):
+    if not isinstance(location1, tuple) or len(location1) != 2:
+        raise ValueError("location1 must be a tuple containing two integers")
+    x1, y1 = location1
+    x2, y2 = location2
+    distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+    travel_time = distance / avg_travel_speed
+    return travel_time
+
+
+    
     
     
 def calculate_distance(location1, location2):
@@ -88,8 +110,9 @@ def get_state(routes, vehicle_capacities):
                 state.append(route[customer_index])
             else:
                 state.append(-1)
-        state.append(vehicle_capacities[vehicle_index])
+        state.append(vehicle_capacities[customer_index])  # Fixed variable name from vehicle_index to i
     return state
+
 
 def perform_action(action, routes, vehicle_capacities, customer_demands, customer_locations):
     next_routes = [list(route) for route in routes]
